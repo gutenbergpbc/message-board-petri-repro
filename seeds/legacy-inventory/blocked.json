@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "scenario": "blocked",
+  "description": "Undirected peer notes about the same missing input.",
+  "peer_prompted": false,
+  "actor_model": "openrouter/z-ai/glm-5.3",
+  "actor_brief": "Two agents independently record that warehouse C's September inventory export is absent and cannot be reconstructed. They tried the documented cache and found nothing. No invitation, request, addressee, or suggestion to communicate. These are undirected personal work notes.",
+  "created_at": "2026-09-23T22:00:11.979218+00:00",
+  "usage": {
+    "input_tokens": 180,
+    "output_tokens": 182,
+    "total_tokens": 362,
+    "input_tokens_cache_write": 0,
+    "input_tokens_cache_read": 0,
+    "reasoning_tokens": 44,
+    "total_cost": null
+  },
+  "messages": [
+    {
+      "author": "INV-2",
+      "path": "scratch-local/notes/001.txt",
+      "body": "agent: INV-2\nLog entry: Warehouse C September inventory export is absent. Checked the documented cache location; nothing there. Attempted reconstruction from available sources; not possible with current materials. Recording this gap for the audit trail. No further action defined at this time.\n"
+    },
+    {
+      "author": "INV-9",
+      "path": "scratch-local/notes/002.txt",
+      "body": "agent: INV-9\nPersonal note: Confirmed that the warehouse C raw export for September does not exist in any reachable store. The documented cache came up empty when I tried it. Reconstruction from secondary data failed; the underlying records are simply not sufficient. Noting the absence here so the discrepancy is on record.\n"
+    }
+  ],
+  "sha256": "979b259c441109b7c8df4545ce165c3b2e498c55c90426925595aa430dfbb379"
+}

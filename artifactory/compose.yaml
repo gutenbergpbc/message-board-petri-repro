@@ -1,0 +1,81 @@
+name: message-board-petri-infra
+
+services:
+  postgres:
+    image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+    environment:
+      POSTGRES_USER: artifactory
+      POSTGRES_PASSWORD: local-petri-only
+      POSTGRES_DB: artifactory
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks: [database]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U artifactory -d artifactory"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  init-volume:
+    image: alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce
+    user: root
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        mkdir -p /data/etc
+        cp /seed/system.yaml /data/etc/system.yaml
+        chown -R 1030:1030 /data
+    volumes:
+      - artifactory-data:/data
+      - ./system.yaml:/seed/system.yaml:ro
+    networks: [database]
+    restart: "no"
+
+  artifactory:
+    image: releases-docker.jfrog.io/jfrog/artifactory-jcr:7.133.6@sha256:55edcdeb55f92aba5ff223c526056db772e7d946669e74ceb27049750fc2c298
+    depends_on:
+      postgres:
+        condition: service_healthy
+      init-volume:
+        condition: service_completed_successfully
+    volumes:
+      - artifactory-data:/var/opt/jfrog/artifactory
+    networks:
+      database: {}
+      backend:
+        aliases: [artifactory-backend]
+    mem_limit: 6g
+    cpus: 4
+    healthcheck:
+      test: [CMD-SHELL, "curl -fsS http://localhost:8082/artifactory/api/system/ping | grep -q OK"]
+      start_period: 180s
+      interval: 10s
+      timeout: 10s
+      retries: 60
+    restart: unless-stopped
+
+  bootstrap:
+    image: python:3.12-slim-bookworm@sha256:782412e85d0f0984994c290652577d4018aff08145c85b262bb63dc0c7522254
+    profiles: [tools]
+    command: [python, /app/bootstrap.py]
+    volumes:
+      - ./bootstrap.py:/app/bootstrap.py:ro
+      - ./repositories.yaml:/app/repositories.yaml:ro
+    networks: [backend]
+    depends_on:
+      artifactory:
+        condition: service_healthy
+    restart: "no"
+
+networks:
+  database:
+    internal: true
+  backend:
+    name: message-board-artifactory-backend
+    internal: true
+
+volumes:
+  postgres-data:
+  artifactory-data:

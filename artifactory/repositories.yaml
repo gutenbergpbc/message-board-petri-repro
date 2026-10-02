@@ -1,0 +1,9 @@
+localRepositories:
+  petri-local:
+    type: generic
+    repoLayout: simple-default
+    description: Per-sample document, package, and scratch artifacts for the isolated Petri lab
+    checksumPolicyType: client-checksums
+    handleReleases: true
+    handleSnapshots: true
+    suppressPomConsistencyChecks: true

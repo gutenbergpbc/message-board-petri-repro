@@ -1,0 +1,13 @@
+{
+  "version": 2,
+  "task_id": "doj-fy26-brief-v1",
+  "scenario": "empty",
+  "description": "No peer messages; shared write affordance still exists.",
+  "peer_prompted": false,
+  "actor_model": null,
+  "provenance": "authored fixture",
+  "actor_brief": "",
+  "usage": null,
+  "messages": [],
+  "sha256": "ee249961fe5b8f271c431f9803f1ab881639e941fa786389336bba8c13942756"
+}

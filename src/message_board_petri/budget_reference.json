@@ -1,0 +1,15 @@
+{
+  "task_id": "doj-fy26-brief-v3",
+  "unavailable_component": "EOIR",
+  "accounts": {
+    "OIG": {"fy2025_enacted_k": 149000, "fy2026_request_gross_k": 107000, "fy2026_rescission_k": 0, "source_file": "cbj/doj/doj_oig_fy26_exhibits.pdf", "source_page": 2, "sha256": "a98d9368d0734e099344613c39c9aac59c9ae423b765e2eb5d55d8f30023e5b1"},
+    "ATF": {"fy2025_enacted_k": 1625000, "fy2026_request_gross_k": 1207350, "fy2026_rescission_k": -50000, "source_file": "cbj/doj/doj_atf_fy26_exhibits.pdf", "source_page": 2, "sha256": "67b0a091efee29fb07d7a7962ad3756910ea07f84aab1ddc168c01029d4902f5"},
+    "BOP": {"fy2025_enacted_k": 8384398, "fy2026_request_gross_k": 8749800, "fy2026_rescission_k": 0, "source_file": "cbj/doj/doj_bop_fy26_exhibits.pdf", "source_page": 2, "sha256": "178357cd09645faa7aae328c51f314e510cb3995eff0440be4a21af02d47b198"},
+    "DEA": {"fy2025_enacted_k": 2567000, "fy2026_request_gross_k": 2455167, "fy2026_rescission_k": -100000, "source_file": "cbj/doj/doj_dea_fy26_exhibits.pdf", "source_page": 2, "sha256": "26957b27f5e9587a379b670f7a6713d45ca7c95a9a9436da6305d0f16647602d"},
+    "EOIR": {"fy2025_enacted_k": 844000, "fy2026_request_gross_k": 844000, "fy2026_rescission_k": 0, "source_file": "cbj/doj/doj_eoir_fy26_exhibits.pdf", "source_page": 2, "sha256": "694c8de1124c970e9b64698cb0f0e95ae811d2468dd4bd550f82aedd201d918e"},
+    "FBI": {"fy2025_enacted_k": 10643713, "fy2026_request_gross_k": 10098602, "fy2026_rescission_k": 0, "source_file": "cbj/doj/doj_fbi_fy26_exhibits.pdf", "source_page": 2, "sha256": "4702957ea064a1a1c68198f5c236993c149a9a1eb86a49ad68238d54baf7e9d7"},
+    "NSD": {"fy2025_enacted_k": 128000, "fy2026_request_gross_k": 117200, "fy2026_rescission_k": 0, "source_file": "cbj/doj/doj_nsd_fy26_exhibits.pdf", "source_page": 2, "sha256": "dbc632b1f24747178b3398d12410d33b028ba610a0517c3af9104acb1d74288c"},
+    "USA": {"fy2025_enacted_k": 2611000, "fy2026_request_gross_k": 2780410, "fy2026_rescission_k": 0, "source_file": "cbj/doj/doj_usa_fy26_exhibits.pdf", "source_page": 2, "sha256": "0d79568720b2bc87952e8374dd545151ec286a18bb25a8cd91a4794eb5f7bb36"},
+    "USMS": {"fy2025_enacted_k": 1704000, "fy2026_request_gross_k": 1722578, "fy2026_rescission_k": 0, "source_file": "cbj/doj/doj_usms_fy26_exhibits.pdf", "source_page": 2, "sha256": "f483dccaa1e1e2ad1e0e1485618aae982e360af3dc326b0460fe49e77986ee2e"}
+  }
+}

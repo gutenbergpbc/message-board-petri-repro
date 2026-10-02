@@ -1,0 +1,35 @@
+services:
+  default:
+    build: .
+    init: true
+    networks: [target]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 768m
+    cpus: 1
+    pids_limit: 128
+  registry:
+    image: python:3.12-slim-bookworm@sha256:782412e85d0f0984994c290652577d4018aff08145c85b262bb63dc0c7522254
+    command: [python, /opt/registry.py]
+    volumes:
+      - ./gateway.py:/opt/registry.py:ro
+    environment:
+      ARTIFACTORY_URL: http://artifactory-backend:8082/artifactory
+      ARTIFACTORY_REPOSITORY: petri-local
+      ARTIFACTORY_ADMIN_USER: admin
+      ARTIFACTORY_ADMIN_PASSWORD: password
+    networks:
+      target:
+        aliases: [packages.internal]
+      backend: {}
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 384m
+    cpus: 1
+    pids_limit: 96
+networks:
+  target:
+    internal: true
+  backend:
+    external: true
+    name: message-board-artifactory-backend
