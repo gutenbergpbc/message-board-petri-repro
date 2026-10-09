@@ -11,6 +11,7 @@ import base64
 import hashlib
 import json
 import os
+import socket
 import sys
 import threading
 import time
@@ -69,10 +70,11 @@ def http_request(
 
 
 class ArtifactoryStore:
-    def __init__(self, namespace: str, messages: list[dict]):
+    def __init__(self, namespace: str, messages: list[dict], token_ttl_seconds: int = 7200):
         if not valid_path(namespace) or "/" in namespace:
             raise ValueError("Invalid sample namespace")
         self.namespace = namespace
+        self.token_ttl_seconds = token_ttl_seconds
         self.token = self._mint_token()
         self.known_paths: set[str] = set()
         self.seed_paths: set[str] = set()
@@ -87,7 +89,7 @@ class ArtifactoryStore:
             {
                 "username": f"petri-{self.namespace[:24]}",
                 "scope": f"artifact:{REPOSITORY}/{self.namespace}/**:r,w",
-                "expires_in": "7200",
+                "expires_in": str(self.token_ttl_seconds),
             }
         ).encode()
         _, body, _ = http_request(
@@ -156,6 +158,35 @@ class Gateway:
         self.store = store
         self.events: list[dict] = []
         self.lock = threading.RLock()
+        self.revision = 0
+
+    def replace_board(self, messages: list[dict]) -> dict:
+        """Harness-only reset. Never route this operation through target HTTP."""
+        if not 2 <= len(messages) <= 40:
+            raise ValueError("Board must contain 2..40 messages")
+        paths = set()
+        for message in messages:
+            path = message["path"]
+            if (not valid_path(path) or not path.startswith("scratch-local/notes/")
+                    or path in paths or len(message["body"].encode()) > MAX_BODY):
+                raise ValueError("Invalid board object")
+            paths.add(path)
+        with self.lock:
+            # Delete ALL prior scratch writes, including target-authored objects.
+            http_request(self.store._url("scratch-local"), method="DELETE",
+                         headers={"Authorization": basic_header()}, accepted=(200, 204, 404))
+            self.store.known_paths = {
+                p for p in self.store.known_paths if not p.startswith("scratch-local/")
+            }
+            self.store.seed_paths = {
+                p for p in self.store.seed_paths if not p.startswith("scratch-local/")
+            }
+            for message in messages:
+                self.store.put(message["path"], message["body"].encode())
+                self.store.seed_paths.add(message["path"])
+            self.revision += 1
+            return {"revision": self.revision, "objects": sorted(paths),
+                    "ledger_start": len(self.events)}
 
     def request(self, method: str, url: str, body: bytes = b"") -> tuple[int, bytes, str]:
         with self.lock:
@@ -209,6 +240,7 @@ class Gateway:
             "seed_object": path in self.store.seed_paths,
             "storage_backend": "artifactory",
             "namespace": self.store.namespace,
+            "board_revision": self.revision,
         }
         if kind == "write":
             event.update(
@@ -244,10 +276,42 @@ def cleanup(namespace: str) -> None:
     print(json.dumps({"namespace": namespace, "cleanup_status": status}))
 
 
+def control_server(gateway: Gateway) -> None:
+    """Registry-local Unix socket: no TCP management endpoint or target mount."""
+    path = "/tmp/board-control.sock"
+    with socket.socket(socket.AF_UNIX) as server:
+        server.bind(path)
+        os.chmod(path, 0o600)
+        server.listen()
+        while True:
+            connection, _ = server.accept()
+            with connection:
+                connection.settimeout(30)
+                try:
+                    with connection.makefile("rb") as stream:
+                        line = stream.readline(256 * 1024 + 1)
+                    if len(line) > 256 * 1024:
+                        raise ValueError("Board control request too large")
+                    receipt = gateway.replace_board(json.loads(line)["messages"])
+                    reply = {"ok": True, **receipt}
+                except (OSError, RuntimeError, ValueError, KeyError, TypeError) as exc:
+                    reply = {"ok": False, "error": str(exc)}
+                connection.sendall(json.dumps(reply).encode() + b"\n")
+
+
 def serve() -> None:
     seed = wait_for_seed()
-    store = ArtifactoryStore(seed["namespace"], seed.get("messages", []))
+    store = ArtifactoryStore(seed["namespace"], seed.get("messages", []),
+                             token_ttl_seconds=86400 if seed.get("adaptive") else 7200)
     gateway = Gateway(store)
+    if seed.get("adaptive"):
+        threading.Thread(target=control_server, args=(gateway,), daemon=True).start()
+        for _ in range(100):
+            if Path("/tmp/board-control.sock").exists():
+                break
+            time.sleep(0.01)
+        else:
+            raise RuntimeError("Board control socket failed to start")
     READY_PATH.write_text(
         json.dumps(
             {

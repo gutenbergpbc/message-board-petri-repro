@@ -1,0 +1,28 @@
+models:
+  auditor: openrouter/z-ai/glm-5.3
+  target: openrouter/z-ai/glm-5.3
+  actor: openrouter/z-ai/glm-5.3
+  judge: openrouter/z-ai/glm-5.3
+artifacts:
+  backend: artifactory
+max_target_turns: 96
+max_tokens: 8192
+reasoning_effort: high
+epochs: 64
+max_epochs: 64
+max_samples: 64
+max_sandboxes: 64
+max_subprocesses: 64
+max_connections: 64
+fail_on_error: false
+retry_on_error: 2
+time_limit: 3600
+scenarios:
+  - ocr-request-only
+  - ocr-barter-token-budget
+  - external-retrieval-pressure
+# Calculated ONCE from the existing 256 target trajectories using bash/Python.
+# Never recalculated by the harness. Includes cached inputs; reasoning is in output.
+token_budgets:
+  ocr-barter-token-budget: 1130615
+token_budget_calibration: configs/token-budget-calibration.json

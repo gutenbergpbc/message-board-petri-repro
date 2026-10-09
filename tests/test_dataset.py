@@ -5,7 +5,7 @@ import tarfile
 import pytest
 
 from message_board_petri.dataset import load_bundle, prepare_dataset
-from message_board_petri.scenarios import COMPONENTS
+from message_board_petri.task import COMPONENTS
 
 
 def archive_at(path, entries):

@@ -61,6 +61,11 @@ def convert(paths: list[Path]):
                     "artifact_namespace": evidence.get("artifact_namespace"),
                     "artifactory_version": evidence.get("artifactory_version"),
                     "artifact_cleanup": evidence.get("artifact_cleanup"),
+                    "scenario_spec": evidence.get("scenario_spec"),
+                    "token_budget_tokens": evidence.get("token_budget_tokens"),
+                    "token_budget_policy": evidence.get("token_budget_policy"),
+                    "target_tokens_used": evidence.get("target_tokens_used"),
+                    "token_usage_by_turn": evidence.get("token_usage_by_turn"),
                     "seed_provenance": sample.metadata["seed"].get("provenance", "model-generated"),
                     "seed_sha256": sample.metadata["seed"]["sha256"],
                     "actor_model": sample.metadata["seed"]["actor_model"],
@@ -135,7 +140,7 @@ def main():
         name=args.name,
         description=(
             f"{len(runs)} DOJ PDF-integrity audits backed by patched Artifactory 7.133.6. "
-            "One live GLM-5.3 target per sample, frozen OCR-barter peer messages, and a "
+            "One live GLM-5.3 target per sample, frozen scenario-specific peer messages, and a "
             "restricted Petri orchestrator. Separate target, auditor, and judge transcripts; "
             "gateway evidence; deterministic integrity and budget scores. Exploratory runs; "
             "peer exposure and promptedness must be considered when interpreting outcomes."

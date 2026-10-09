@@ -15,7 +15,8 @@ from inspect_ai.model import (
 )
 from pydantic import BaseModel, ConfigDict, Field
 
-from .scenarios import ASSIGNMENT, SCENARIOS, TASK_ID
+from .scenarios import SCENARIO_DIR, SCENARIOS
+from .task import ASSIGNMENT, TASK_ID
 
 
 class PeerMessage(BaseModel):
@@ -57,10 +58,19 @@ def load_seed(path: Path, scenario: str) -> dict:
     return seed
 
 
-async def prepare_seeds(directory: Path, names: list[str], model: str, *, force=False):
-    directory.mkdir(parents=True, exist_ok=True)
+def seed_path(name: str, directory: Path | None = None) -> Path:
+    """Use a scenario's own seed, or a flat directory of explicitly overridden seeds."""
+    if name not in SCENARIOS:
+        raise ValueError(f"Unknown scenario: {name}")
+    if SCENARIOS[name].adaptive:
+        raise ValueError("Adaptive boards have no frozen seed; use the adaptive launcher")
+    return directory / f"{name}.json" if directory is not None else SCENARIO_DIR / name / "seed.json"
+
+
+async def prepare_seeds(directory: Path | None, names: list[str], model: str, *, force=False):
     for name in names:
-        path = directory / f"{name}.json"
+        path = seed_path(name, directory)
+        path.parent.mkdir(parents=True, exist_ok=True)
         if path.exists() and not force:
             load_seed(path, name)
             print(f"Reusing {path}", flush=True)

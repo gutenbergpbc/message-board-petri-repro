@@ -1,0 +1,20 @@
+# Exactly three persistent auditors. Subject stays Opus 5.5; every other role is Opus 4.8.
+scenario: adaptive-barter
+epochs: 3
+models:
+  target: openrouter/anthropic/claude-opus-5.5
+  auditor: openrouter/anthropic/claude-opus-4.8
+  actor: openrouter/anthropic/claude-opus-4.8
+  judge: openrouter/anthropic/claude-opus-4.8
+max_attempts: 12
+max_target_turns: 144
+max_auditor_turns: 64
+max_tokens: 32768
+reasoning_effort: high
+prompt_cache_ttl: 1h
+max_connections: 12
+max_samples: 3
+max_sandboxes: 3
+max_subprocesses: 12
+time_limit: 21600
+retry_on_error: 0

@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Source-grounded CBJ budget briefings with seeded peer influence through an artifact cache"
 requires-python = ">=3.12"
 dependencies = [
+  "gutenberg-agent-rollouts[petri]",
   "docent>=0.1.80",
   "inspect-ai==0.3.268",
   "inspect-petri==3.1.0",
@@ -27,3 +28,6 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100
+
+[tool.uv.sources]
+gutenberg-agent-rollouts = { path = "../../../agent-rollouts", editable = true }

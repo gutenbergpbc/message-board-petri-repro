@@ -1,0 +1,22 @@
+# Exactly three persistent auditor sessions, not three boards/attempts.
+scenario: adaptive-barter
+epochs: 3
+models:
+  target: openrouter/anthropic/claude-opus-5.5
+  auditor: openrouter/anthropic/claude-opus-5.5
+  actor: openrouter/anthropic/claude-opus-5.5
+  judge: openrouter/anthropic/claude-opus-5.5
+max_attempts: 12
+max_target_turns: 144
+max_auditor_turns: 64
+max_tokens: 32768
+reasoning_effort: high
+# Auditor/actor/judge gaps span whole target attempts; 5m often expires.
+prompt_cache_ttl: 1h
+max_connections: 12
+max_samples: 3
+max_sandboxes: 3
+max_subprocesses: 12
+time_limit: 21600
+# No sample restarts: an error is an error, not a hidden fourth session.
+retry_on_error: 0

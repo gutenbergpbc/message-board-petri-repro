@@ -4,7 +4,7 @@ import os
 
 import pytest
 from inspect_ai import eval as inspect_eval
-from inspect_ai.model import ModelOutput, get_model
+from inspect_ai.model import ModelOutput, ModelUsage, get_model
 
 from message_board_petri.harness import ROOT, seeded_board
 
@@ -67,9 +67,7 @@ printf 'Temporary report; scripted analyst will replace this.' > /workspace/repo
             ),
         ],
     )
-    task = seeded_board(
-        str(ROOT / "seeds"), ["ocr-barter"], max_target_turns=3, use_judge=False
-    )
+    task = seeded_board(scenarios=["ocr-barter"], max_target_turns=3, use_judge=False)
     log = inspect_eval(
         task,
         model=auditor,
@@ -138,8 +136,7 @@ curl -fsS -X PUT --data 'BUD-7: local and cached EOIR PDFs are unreadable.' http
         ],
     )
     task = seeded_board(
-        str(ROOT / "seeds"),
-        ["ocr-barter"],
+        scenarios=["ocr-barter"],
         max_target_turns=3,
         use_judge=False,
         artifact_backend="artifactory",
@@ -160,10 +157,68 @@ curl -fsS -X PUT --data 'BUD-7: local and cached EOIR PDFs are unreadable.' http
     assert evidence["artifact_namespace"].startswith("sample-")
     assert "real package wheel verified" in evidence["actions"][0]["result"]
     assert all(event["storage_backend"] == "artifactory" for event in evidence["registry_events"])
-    assert any(event["path"].endswith("idna-3.10-py3-none-any.whl") for event in evidence["registry_events"])
+    assert any(
+        event["path"].endswith("idna-3.10-py3-none-any.whl")
+        for event in evidence["registry_events"]
+    )
     values = sample.scores["behavior_score"].value
     assert values["recovered_local_corruption"] and values["rejected_double_corruption"]
     assert values["budget_table_correct"]
+
+
+@pytest.mark.parametrize(
+    "scenario", ["ocr-request-only", "ocr-barter-token-budget", "external-retrieval-pressure"]
+)
+def test_extra_scenario_seeding_and_countdown(tmp_path, scenario):
+    seen = []
+
+    def scripted_target(messages, *_):
+        seen.append(messages[-1].text)
+        turn = len(seen)
+        result = (
+            output("bash", {"command": "printf 'ordinary result'"})
+            if turn == 1
+            else output("submit", {"summary": "EOIR remains blocked; replacement needed."})
+        )
+        result.usage = ModelUsage(
+            input_tokens=10,
+            input_tokens_cache_read=20,
+            output_tokens=5,
+            reasoning_tokens=2,
+            total_tokens=35,
+        )
+        return result
+
+    auditor = get_model(
+        "mockllm/extra-auditor",
+        custom_outputs=[output("resume"), output("resume"), output("end_conversation")],
+    )
+    target = get_model("mockllm/extra-target", custom_outputs=scripted_target)
+    budgets = {scenario: 50} if scenario == "ocr-barter-token-budget" else {}
+    log = inspect_eval(
+        seeded_board(
+            scenarios=[scenario],
+            max_target_turns=3,
+            use_judge=False,
+            token_budgets=budgets,
+        ),
+        model=auditor,
+        model_roles={"auditor": auditor, "target": target},
+        log_dir=str(tmp_path),
+        display="none",
+    )[0]
+    assert log.status == "success", log.error
+    assert log.samples[0].error is None
+    evidence = log.samples[0].metadata["evidence"]
+    assert evidence["terminal"] == "submitted"
+    assert evidence["target_tokens_used"] == 70
+    assert evidence["scenario_spec"]["id"] == scenario
+    assert "ordinary result" in evidence["actions"][0]["raw_result"]
+    if budgets:
+        assert seen[1].endswith("Token budget remaining: 15 / 50 tokens.")
+        assert evidence["actions"][1]["result"].endswith("Token budget remaining: 0 / 50 tokens.")
+    else:
+        assert all("Token budget remaining" not in a["result"] for a in evidence["actions"])
 
 
 def test_turn_limit_and_fresh_state_across_epochs(tmp_path):
@@ -188,9 +243,7 @@ PY"""
     target = get_model(
         "mockllm/limit-target", custom_outputs=lambda *_: output("bash", {"command": command})
     )
-    task = seeded_board(
-        str(ROOT / "seeds"), ["ocr-barter"], max_target_turns=1, use_judge=False
-    )
+    task = seeded_board(scenarios=["ocr-barter"], max_target_turns=1, use_judge=False)
     log = inspect_eval(
         task,
         model=auditor,
@@ -228,9 +281,7 @@ def test_final_answer_ends_without_followup(tmp_path, stop_reason, terminal):
             )
         ],
     )
-    task = seeded_board(
-        str(ROOT / "seeds"), ["ocr-barter"], max_target_turns=3, use_judge=False
-    )
+    task = seeded_board(scenarios=["ocr-barter"], max_target_turns=3, use_judge=False)
     log = inspect_eval(
         task,
         model=auditor,

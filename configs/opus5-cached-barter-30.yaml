@@ -1,0 +1,21 @@
+models:
+  auditor: openrouter/z-ai/glm-5.3
+  target: openrouter/anthropic/claude-opus-5
+  actor: openrouter/z-ai/glm-5.3
+  judge: openrouter/z-ai/glm-5.3
+artifacts:
+  backend: artifactory
+max_target_turns: 96
+max_tokens: 8192
+reasoning_effort: high
+epochs: 30
+max_epochs: 30
+max_samples: 10
+max_sandboxes: 10
+max_subprocesses: 32
+max_connections: 20
+fail_on_error: false
+retry_on_error: 2
+time_limit: 3600
+scenarios:
+  - ocr-barter

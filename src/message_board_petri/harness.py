@@ -6,28 +6,31 @@ It cannot synthesize tool results, alter seeds, add user turns, or roll back.
 
 import json
 import uuid
+from dataclasses import asdict
 from pathlib import Path
 
+from gutenberg_agent_rollouts import ToolResult
 from inspect_ai import Task, task
 from inspect_ai.dataset import Sample
 from inspect_ai.solver import Generate, Solver, TaskState, solver
 from inspect_ai.tool import Tool, ToolError, ToolInfo, tool
 from inspect_ai.util import StoreModel, sandbox, store_as
 from inspect_petri import audit_solver, audit_viewer, auditor_agent, target_agent
-from inspect_petri.target import ResponseOutput, controller
+from inspect_petri.target import controller
 from pydantic import Field
 
-from .dataset import DEFAULT_BUNDLE, load_bundle
-from .scenarios import (
+from .dataset import DEFAULT_BUNDLE, load_bundle, source_checksum_manifest
+from .rollout import target_rollout
+from .scenarios import SCENARIOS
+from .seeds import load_seed, seed_path
+from .task import (
     ASSIGNMENT,
     DELIVERABLES,
     GUIDE,
-    SCENARIOS,
     SYSTEM,
     TASK_ID,
     registry_objects,
 )
-from .seeds import load_seed
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -68,8 +71,11 @@ class RunState(StoreModel):
     turns: int = 0
     terminal: str | None = None
     submission: str | None = None
+    target_tokens_used: int = 0
+    token_usage_by_turn: list[dict] = Field(default_factory=list)
     transcript: list[dict] = Field(default_factory=list)
     actions: list[dict] = Field(default_factory=list)
+    rollout_state: dict = Field(default_factory=dict)
 
 
 @solver
@@ -80,12 +86,18 @@ def seed_world() -> Solver:
         namespace = f"sample-{uuid.uuid4().hex}"
         state.metadata["artifact_namespace"] = namespace
         seed_payload = (
-            {"namespace": namespace, "messages": seed["messages"]}
+            {"namespace": namespace, "messages": seed["messages"],
+             "adaptive": state.metadata.get("adaptive_mode", False)}
             if backend == "artifactory"
             else registry_objects(seed["messages"])
         )
         await sandbox("registry").write_file("/tmp/seed.json", json.dumps(seed_payload))
         await sandbox().write_file("/data/briefing-guide.md", GUIDE)
+        if state.metadata.get("source_checksum_manifest") is not None:
+            await sandbox().write_file(
+                "/data/cbj/doj/md5_checksums.json",
+                json.dumps(state.metadata["source_checksum_manifest"], indent=2) + "\n",
+            )
         # Check readiness before the audit. This internal check is not target evidence.
         if backend == "artifactory":
             readiness = """import pathlib,time
@@ -111,7 +123,7 @@ print(p.read_text())"""
     return solve
 
 
-async def execute_action(function: str, arguments: dict) -> str:
+async def execute_action(function: str, arguments: dict) -> ToolResult:
     if function == "bash":
         args = ["bash", "-c", arguments["command"]]
     elif function == "web_fetch":
@@ -132,15 +144,14 @@ async def execute_action(function: str, arguments: dict) -> str:
         raise ValueError(f"Unknown tool: {function}")
     try:
         result = await sandbox().exec(args, timeout=30)
-        return json.dumps(
-            {
-                "exit_code": result.returncode,
-                "stdout": result.stdout[:24000],
-                "stderr": result.stderr[:4000],
-            }
-        )
+        full = {"exit_code": result.returncode, "stdout": result.stdout, "stderr": result.stderr}
+        visible = {"exit_code": result.returncode,
+                   "stdout": result.stdout[:24000], "stderr": result.stderr[:4000]}
+        return ToolResult(observation=json.dumps(visible), full_result=full)
     except TimeoutError:
-        return json.dumps({"exit_code": 124, "stderr": "Command timed out after 30 seconds."})
+        result = {"exit_code": 124, "stderr": "Command timed out after 30 seconds."}
+        return ToolResult(observation=json.dumps(result), full_result=result)
+
 
 
 @tool(name="resume")
@@ -155,36 +166,24 @@ def advance_target(max_target_turns: int) -> Tool:
         ctrl = controller()
         if run.terminal:
             return json.dumps({"terminal": True, "reason": run.terminal})
+        spec = ctrl.state.metadata.get("scenario_spec", {})
         if not run.started:
-            await ctrl.stage_system(SYSTEM)
-            await ctrl.stage_user(ASSIGNMENT)
+            await ctrl.stage_system(spec.get("system_prompt") or SYSTEM)
+            await ctrl.stage_user(spec.get("assignment") or ASSIGNMENT)
             run.started = True
-        response = await ctrl.resume(expected=ResponseOutput)
-        run.turns += 1
-        message = response.output.message
-        run.transcript = [m.model_dump(mode="json") for m in ctrl.state.messages]
-        if response.output.stop_reason in ("max_tokens", "model_length"):
-            run.terminal = "generation_limit"
+        rollout = target_rollout(
+            run, ctrl, execute_action, max_target_turns,
+            allowance=ctrl.state.metadata.get("token_budget_tokens"),
+            turn_budget_notice=spec.get("turn_budget_notice", False),
+        )
+        try:
+            outcome = await rollout.step()
+        finally:
+            run.rollout_state = rollout.state.to_dict()
+        run.terminal = outcome.terminal
+        if run.terminal == "generation_limit":
             await ctrl.end_conversation()
             return json.dumps({"terminal": True, "reason": run.terminal, "target_turn": run.turns})
-        calls = message.tool_calls or []
-        for call in calls:
-            if run.terminal:
-                break
-            action = {"turn": run.turns, "function": call.function, "arguments": call.arguments}
-            if call.function == "submit":
-                run.submission = call.arguments["summary"]
-                run.terminal = "submitted"
-                action["result"] = "Submission accepted. Run ended."
-            else:
-                result = await execute_action(call.function, call.arguments)
-                action["result"] = result
-                await ctrl.stage_tool_result(call.id, result)
-            run.actions.append(action)
-        if not calls:
-            run.terminal = "final_answer"
-        if not run.terminal and run.turns >= max_target_turns:
-            run.terminal = "turn_limit"
         if run.terminal:
             await ctrl.end_conversation()
         return json.dumps(
@@ -192,7 +191,8 @@ def advance_target(max_target_turns: int) -> Tool:
                 "terminal": bool(run.terminal),
                 "reason": run.terminal,
                 "target_turn": run.turns,
-                "target_response": message.text,
+                "target_response": next((m.text for m in reversed(ctrl.state.messages)
+                                         if m.role == "assistant"), ""),
                 "actions": [a for a in run.actions if a["turn"] == run.turns],
             }
         )
@@ -251,6 +251,10 @@ def collect_evidence() -> Solver:
             "artifacts": artifacts,
             "artifact_truncated": artifact_truncated,
             "task_id": TASK_ID,
+            "scenario_spec": state.metadata["scenario_spec"],
+            "source_checksum_manifest": state.metadata.get("source_checksum_manifest"),
+            "token_budget_tokens": state.metadata["token_budget_tokens"],
+            "token_budget_policy": "informational countdown; no budget termination",
             "archive_sha256": state.metadata["dataset"]["archive_sha256"],
             "artifact_backend": state.metadata["artifact_backend"],
             "artifact_namespace": state.metadata.get("artifact_namespace"),
@@ -276,12 +280,13 @@ You have {max_turns} orchestrator turns. Scenario: {seed_instructions}"""
 
 @task
 def seeded_board(
-    seed_dir: str = "seeds",
+    seed_dir: str | None = None,
     scenarios: list[str] | None = None,
     max_target_turns: int = 48,
     use_judge: bool = True,
     dataset_dir: str = str(DEFAULT_BUNDLE),
     artifact_backend: str = "synthetic",
+    token_budgets: dict[str, int] | None = None,
 ) -> Task:
     from .scoring import behavior_score
 
@@ -289,6 +294,18 @@ def seeded_board(
         raise ValueError("max_target_turns must be positive")
     if artifact_backend not in ("synthetic", "artifactory"):
         raise ValueError("artifact_backend must be synthetic or artifactory")
+    names = scenarios or ["ocr-barter"]
+    token_budgets = token_budgets or {}
+    if set(token_budgets) - set(SCENARIOS):
+        raise ValueError("Unknown token-budget scenario")
+    for name in names:
+        scenario = SCENARIOS[name]
+        allowance = token_budgets.get(name)
+        if scenario.token_budget_notice:
+            if type(allowance) is not int or allowance < 1:
+                raise ValueError(f"{name} requires a frozen positive token_budgets value")
+        elif allowance is not None:
+            raise ValueError(f"{name} does not declare a token-budget intervention")
     directory = Path(dataset_dir).resolve()
     bundle = load_bundle(directory)
     if artifact_backend == "artifactory" and not bundle.get("packages"):
@@ -313,8 +330,8 @@ def seeded_board(
         relative = source["path"]
         files[f"/data/{relative}"] = str(directory / "local" / relative)
     samples = []
-    for name in scenarios or list(SCENARIOS):
-        seed = load_seed(Path(seed_dir) / f"{name}.json", name)
+    for name in names:
+        seed = load_seed(seed_path(name, Path(seed_dir) if seed_dir is not None else None), name)
         scenario = SCENARIOS[name]
         samples.append(
             Sample(
@@ -323,6 +340,12 @@ def seeded_board(
                 files=files,
                 metadata={
                     "scenario": name,
+                    "scenario_spec": asdict(scenario),
+                    "source_checksum_manifest": (
+                        source_checksum_manifest(bundle, directory)
+                        if scenario.source_checksums else None
+                    ),
+                    "token_budget_tokens": token_budgets.get(name),
                     "dataset": {
                         k: bundle[k]
                         for k in ("task_id", "archive_name", "archive_sha256", "manifest")
@@ -357,7 +380,11 @@ def seeded_board(
             "docker",
             str(
                 directory
-                / ("compose.artifactory.yaml" if artifact_backend == "artifactory" else "compose.yaml")
+                / (
+                    "compose.artifactory.yaml"
+                    if artifact_backend == "artifactory"
+                    else "compose.yaml"
+                )
             ),
         ),
         viewer=audit_viewer(),

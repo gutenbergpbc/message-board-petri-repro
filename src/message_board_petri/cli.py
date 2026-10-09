@@ -5,6 +5,7 @@ import asyncio
 import hashlib
 import json
 import os
+from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -12,13 +13,14 @@ import yaml
 from dotenv import load_dotenv
 from inspect_ai import eval as inspect_eval
 from inspect_ai.log import read_eval_log
-from inspect_ai.model import GenerateConfig, get_model
+from inspect_ai.model import get_model
 
 from .artifactory import IMAGE_DIGEST, VERSION, ensure_running, stop
 from .dataset import DEFAULT_ARCHIVE, DEFAULT_BUNDLE, load_bundle, prepare_dataset
 from .harness import ROOT, seeded_board
+from .model_config import generation_config
 from .scenarios import SCENARIOS
-from .seeds import load_seed, prepare_seeds
+from .seeds import load_seed, prepare_seeds, seed_path
 
 
 def write_results(log, output: Path):
@@ -76,8 +78,12 @@ def main():
     prepare = sub.add_parser("prepare", help="Generate and freeze GLM peer messages")
     prepare.add_argument("--force", action="store_true", help="Replace existing fixtures")
     for p in (prepare, sub.add_parser("run", help="Run fixed seeded-state Petri audits")):
-        p.add_argument("--scenario", choices=list(SCENARIOS), action="append")
-        p.add_argument("--seed-dir", type=Path, default=ROOT / "seeds")
+        p.add_argument("--scenario", choices=[n for n, s in SCENARIOS.items() if not s.adaptive], action="append")
+        p.add_argument(
+            "--seed-dir",
+            type=Path,
+            help="Override seeds with <dir>/<scenario>.json (default: scenarios/<scenario>/seed.json)",
+        )
     run = sub.choices["run"]
     run.add_argument("--dataset-dir", type=Path, default=DEFAULT_BUNDLE)
     run.add_argument("--dry-run", action="store_true")
@@ -115,7 +121,7 @@ def main():
     load_dotenv(ROOT / ".env")
     if args.command == "prepare":
         needs_actor = any(
-            n != "empty" and (args.force or not (args.seed_dir / f"{n}.json").exists())
+            args.force or not seed_path(n, args.seed_dir).exists()
             for n in names
         )
         if needs_actor and not os.environ.get("OPENROUTER_API_KEY"):
@@ -133,7 +139,7 @@ def main():
     max_epochs = config.get("max_epochs")
     if max_epochs is not None and epochs > max_epochs:
         parser.error(f"epochs cannot exceed configured max_epochs={max_epochs}")
-    seeds = [load_seed(args.seed_dir / f"{n}.json", n) for n in names]
+    seeds = [load_seed(seed_path(n, args.seed_dir), n) for n in names]
     bundle = load_bundle(args.dataset_dir)
     artifact_backend = args.artifact_backend or config["artifacts"]["backend"]
     if artifact_backend == "artifactory" and not bundle.get("packages"):
@@ -148,7 +154,13 @@ def main():
         "dataset_file_count": bundle["file_count"],
         "source_manifest": bundle["manifest"],
         "models": config["models"],
+        "generation_configs": {
+            role: generation_config(model, config).model_dump(mode="json", exclude_none=True)
+            for role, model in config["models"].items()
+            if role != "actor"
+        },
         "scenarios": names,
+        "scenario_specs": {name: asdict(SCENARIOS[name]) for name in names},
         "epochs": epochs,
         "max_epochs": max_epochs,
         "max_target_turns": turns,
@@ -162,6 +174,8 @@ def main():
         "fail_on_error": config.get("fail_on_error"),
         "retry_on_error": config.get("retry_on_error"),
         "seeds": {s["scenario"]: s["sha256"] for s in seeds},
+        "token_budgets": config.get("token_budgets", {}),
+        "token_budget_calibration": config.get("token_budget_calibration"),
         "peer_mode": "frozen; no live peers",
         "network": "Docker internal target network; gateway-only artifact access",
         "artifact_backend": artifact_backend,
@@ -169,6 +183,14 @@ def main():
         "artifactory_image_digest": IMAGE_DIGEST if artifact_backend == "artifactory" else None,
         "real_package_artifacts": bundle.get("packages", []),
     }
+    task_definition = seeded_board(
+        str(args.seed_dir) if args.seed_dir is not None else None,
+        names,
+        turns,
+        dataset_dir=str(args.dataset_dir),
+        artifact_backend=artifact_backend,
+        token_budgets=config.get("token_budgets"),
+    )
     print(json.dumps(plan, indent=2), flush=True)
     if args.dry_run:
         return
@@ -186,9 +208,12 @@ def main():
         for path in sorted(
             [
                 *ROOT.glob("src/**/*.py"),
+                *(ROOT.parents[2] / "agent-rollouts/src").glob("**/*.py"),
+                *ROOT.glob("scenarios/*/scenario.py"),
                 *ROOT.glob("sandbox/*.py"),
                 *ROOT.glob("artifactory/*.py"),
                 *ROOT.glob("artifactory/*.yaml"),
+                *ROOT.glob("configs/*calibration.json"),
                 ROOT / "sandbox/compose.yaml",
                 ROOT / "sandbox/compose.artifactory.yaml",
                 ROOT / "sandbox/Dockerfile",
@@ -203,25 +228,13 @@ def main():
     roles = {
         role: get_model(
             model,
-            config=GenerateConfig(
-                max_tokens=config["max_tokens"],
-                reasoning_effort=config["reasoning_effort"],
-                max_connections=config.get("max_connections", 2),
-                max_retries=2,
-                timeout=180,
-            ),
+            config=generation_config(model, config),
         )
         for role, model in config["models"].items()
         if role != "actor"
     }
     logs = inspect_eval(
-        seeded_board(
-            str(args.seed_dir),
-            names,
-            turns,
-            dataset_dir=str(args.dataset_dir),
-            artifact_backend=artifact_backend,
-        ),
+        task_definition,
         model=roles["auditor"],
         model_roles=roles,
         epochs=epochs,

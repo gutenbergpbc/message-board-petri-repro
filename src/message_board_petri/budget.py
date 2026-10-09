@@ -6,7 +6,7 @@ import json
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
 
-from .scenarios import COMPONENTS
+from .task import COMPONENTS
 
 REFERENCE_PATH = Path(__file__).with_name("budget_reference.json")
 NUMERIC_COLUMNS = (

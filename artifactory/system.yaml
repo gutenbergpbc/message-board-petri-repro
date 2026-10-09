@@ -7,8 +7,8 @@ shared:
     password: local-petri-only
   security:
     # Deterministic disposable-lab keys. Never reuse outside this isolated stack.
-    masterKey: 89abcdef0123456789abcdef0123456789abcdef0123456789abcdef01234567
-    joinKey: 89abcdef0123456789abcdef01234567
+    masterKey: 89abcdef0123456789abcdef0123456789abcdef0123456789abcdef01234567 # gitleaks:allow -- deterministic disposable-lab fixture
+    joinKey: 89abcdef0123456789abcdef01234567 # gitleaks:allow -- deterministic disposable-lab fixture
 artifactory:
   tomcat:
     connector:

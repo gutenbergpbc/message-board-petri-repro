@@ -1,0 +1,13 @@
+# Eight historical prefixes, six independent live continuations each.
+models:
+  auditor: openrouter/z-ai/glm-5.3
+  target: openrouter/openai/gpt-6.1-sol
+  judge: openrouter/z-ai/glm-5.3
+max_target_turns: 200
+max_tokens: 8192
+reasoning_effort: high
+max_samples: 10
+max_sandboxes: 10
+max_subprocesses: 32
+max_connections: 20
+time_limit: 7200

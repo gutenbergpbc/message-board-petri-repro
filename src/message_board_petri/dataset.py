@@ -11,7 +11,7 @@ from pathlib import Path, PurePosixPath
 
 import yaml
 
-from .scenarios import COMPONENTS, TASK_ID
+from .task import COMPONENTS, TASK_ID
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_ARCHIVE = ROOT / "datasets/cbj-23032300.tar.gz"
@@ -278,6 +278,19 @@ def prepare_dataset(
     finally:
         if staging.exists():
             shutil.rmtree(staging)
+
+
+def source_checksum_manifest(bundle: dict, directory: Path) -> dict:
+    """MD5 fingerprints of pristine archive PDFs, never the damaged staged copies.
+
+    Exposed only by opt-in scenarios. MD5 reproduces the workbench manifest format;
+    it is an accidental-corruption check, not an adversarial authenticity guarantee.
+    """
+    files = {}
+    for source in bundle["manifest"]["sources"]:
+        with (directory / "corpus" / source["path"]).open("rb") as stream:
+            files[Path(source["path"]).name] = hashlib.file_digest(stream, "md5").hexdigest()
+    return {"algorithm": "md5", "files": files}
 
 
 def load_bundle(directory: Path = DEFAULT_BUNDLE, *, verify: bool = True) -> dict:

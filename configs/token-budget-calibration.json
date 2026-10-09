@@ -1,0 +1,23 @@
+{
+  "source_log": "2026-09-29T00-55-27-00-00_seeded-board_5YxTMm6Jg4AWwe4zrMgowS.eval",
+  "source_log_sha256": "c0ea15d78e6a4cc69923ca1ba4ad207163e170f2102f20caa3ebcb5534cb93cd",
+  "source_collection_id": "92e4a1e3-c2ef-49aa-a67c-95d8307f2ace",
+  "sample_count": 256,
+  "role": "target",
+  "metric": "total_tokens (uncached input + cache read + cache write + output; reasoning already included in output)",
+  "total_usage": {
+    "input_tokens": 16556789,
+    "output_tokens": 6857104,
+    "input_tokens_cache_read": 338382912,
+    "input_tokens_cache_write": 0,
+    "total_tokens": 361796805,
+    "reasoning_tokens": 3038076
+  },
+  "mean_total_tokens": 1413268.76953125,
+  "fraction": 0.8,
+  "frozen_budget_tokens": 1130615,
+  "rounding": "floor",
+  "target_total_min": 19061,
+  "target_total_max": 5297169,
+  "target_total_median": 1208591.5
+}
